@@ -69,5 +69,37 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+// --- EDIT USER ROUTE ---
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username, email } = req.body;
+    
+    const [result] = await pool.execute(
+      'UPDATE users SET username = ?, email = ? WHERE id = ?',
+      [username, email, id]
+    );
+    
+    if (result.affectedRows === 0) return res.status(404).json({ error: "User not found" });
+    res.json({ message: "User updated successfully" });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: "Email already exists" });
+    res.status(500).json({ error: "Update failed" });
+  }
+});
+
+// --- DELETE USER ROUTE ---
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.execute('DELETE FROM users WHERE id = ?', [id]);
+    
+    if (result.affectedRows === 0) return res.status(404).json({ error: "User not found" });
+    res.json({ message: "User deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: "Delete failed" });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Auth API running on http://localhost:${PORT}`));

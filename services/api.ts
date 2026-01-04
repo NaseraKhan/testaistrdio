@@ -75,5 +75,53 @@ export const apiService = {
       }
       throw error;
     }
+  },
+
+  async updateUser(id: number, data: Partial<User>) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Update failed');
+      }
+      return await response.json();
+    } catch (error: any) {
+      if (error.message === 'Failed to fetch') {
+        this.isSimulated = true;
+        const users = getMockUsers();
+        const index = users.findIndex((u: any) => u.id === id);
+        if (index === -1) throw new Error('User not found in Simulation DB');
+        users[index] = { ...users[index], ...data };
+        saveMockUsers(users);
+        return { message: "Updated (Simulated)" };
+      }
+      throw error;
+    }
+  },
+
+  async deleteUser(id: number) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Delete failed');
+      }
+      return await response.json();
+    } catch (error: any) {
+      if (error.message === 'Failed to fetch') {
+        this.isSimulated = true;
+        const users = getMockUsers();
+        const filtered = users.filter((u: any) => u.id !== id);
+        saveMockUsers(filtered);
+        return { message: "Deleted (Simulated)" };
+      }
+      throw error;
+    }
   }
 };
