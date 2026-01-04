@@ -1,0 +1,5 @@
+{
+  "name": "SecureAuth MySQL Guide",
+  "description": "A high-end authentication interface with a built-in interactive guide on connecting frontend applications to external MySQL databases using secure backend bridges.",
+  "requestFramePermissions": []
+}
