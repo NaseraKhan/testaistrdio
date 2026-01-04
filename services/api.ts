@@ -62,16 +62,27 @@ export const apiService = {
     }
   },
 
-  async getAllUsers(): Promise<User[]> {
+  async getAllUsers(search?: string): Promise<User[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/users`);
+      const url = new URL(`${API_BASE_URL}/users`);
+      if (search) url.searchParams.append('search', search);
+
+      const response = await fetch(url.toString());
       if (!response.ok) throw new Error('Failed to fetch users');
       this.isSimulated = false;
       return await response.json();
     } catch (error: any) {
       if (error.message === 'Failed to fetch') {
         this.isSimulated = true;
-        return getMockUsers().map(({ id, username, email }: any) => ({ id, username, email }));
+        let users = getMockUsers();
+        if (search) {
+          const s = search.toLowerCase();
+          users = users.filter((u: any) => 
+            u.username.toLowerCase().includes(s) || 
+            u.email.toLowerCase().includes(s)
+          );
+        }
+        return users.map(({ id, username, email }: any) => ({ id, username, email }));
       }
       throw error;
     }

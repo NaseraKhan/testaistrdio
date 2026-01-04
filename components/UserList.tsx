@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { apiService } from '../services/api';
 import { User } from '../types';
 import { Input } from './Input';
@@ -15,21 +15,27 @@ export const UserList: React.FC = () => {
   const [editForm, setEditForm] = useState({ username: '', email: '' });
   const [isSaving, setIsSaving] = useState(false);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async (searchTerm?: string) => {
     try {
       setLoading(true);
-      const data = await apiService.getAllUsers();
+      const data = await apiService.getAllUsers(searchTerm);
       setUsers(data);
+      setError(null);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchUsers();
   }, []);
+
+  // Debounced search effect
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchUsers(search);
+    }, 400); // 400ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [search, fetchUsers]);
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this user?')) return;
@@ -63,11 +69,6 @@ export const UserList: React.FC = () => {
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.username.toLowerCase().includes(search.toLowerCase()) || 
-    u.email.toLowerCase().includes(search.toLowerCase())
-  );
-
   if (loading && users.length === 0) return (
     <div className="flex justify-center items-center h-64">
       <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
@@ -79,36 +80,50 @@ export const UserList: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">User Directory</h2>
-          <p className="text-gray-500">Viewing all registered accounts on {apiService.isSimulated ? 'Simulation DB' : 'MySQL Database'}</p>
+          <p className="text-gray-500">
+            {search ? `Searching for "${search}"` : 'Viewing all accounts'} on {apiService.isSimulated ? 'Simulation DB' : 'MySQL Database'}
+          </p>
         </div>
-        <div className="relative">
+        <div className="relative group">
           <input
             type="text"
             placeholder="Search users..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none w-full md:w-64"
+            className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none w-full md:w-64 transition-all"
           />
-          <svg className="w-5 h-5 absolute left-3 top-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+          <div className="absolute left-3 top-2.5">
+            {loading ? (
+              <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <svg className="w-5 h-5 text-gray-400 group-focus-within:text-indigo-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            )}
+          </div>
         </div>
       </div>
 
       {error && (
         <div className="p-4 bg-red-50 text-red-600 rounded-xl mb-6 flex justify-between items-center">
           <span>{error}</span>
-          <button onClick={fetchUsers} className="text-sm font-bold underline">Retry</button>
+          <button onClick={() => fetchUsers(search)} className="text-sm font-bold underline">Retry</button>
         </div>
       )}
 
-      {filteredUsers.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
-          <p className="text-gray-400">No users found matching your search.</p>
+      {!loading && users.length === 0 ? (
+        <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200 animate-in fade-in zoom-in-95">
+          <div className="mb-4 text-gray-300">
+             <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+             </svg>
+          </div>
+          <p className="text-gray-500 font-medium">No results for "{search}"</p>
+          <button onClick={() => setSearch('')} className="mt-2 text-indigo-600 text-sm hover:underline">Clear search</button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredUsers.map((user) => (
+          {users.map((user) => (
             <div key={user.id} className="group bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all flex items-center space-x-4">
               <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center font-bold text-lg">
                 {user.username.charAt(0).toUpperCase()}

@@ -58,10 +58,21 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// --- LIST USERS ROUTE ---
+// --- LIST USERS ROUTE WITH DYNAMIC SEARCH ---
 app.get('/api/users', async (req, res) => {
   try {
-    const [rows] = await pool.execute('SELECT id, username, email FROM users ORDER BY id DESC');
+    const { search } = req.query;
+    let query = 'SELECT id, username, email FROM users';
+    let params = [];
+
+    if (search) {
+      query += ' WHERE username LIKE ? OR email LIKE ?';
+      const searchPattern = `%${search}%`;
+      params = [searchPattern, searchPattern];
+    }
+
+    query += ' ORDER BY id DESC';
+    const [rows] = await pool.execute(query, params);
     res.json(rows);
   } catch (err) {
     console.error(err);
