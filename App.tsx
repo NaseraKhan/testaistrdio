@@ -1,16 +1,17 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Page, User } from './types';
 import { Input } from './components/Input';
 import { MySQLGuide } from './components/MySQLGuide';
-
-const API_BASE_URL = 'http://localhost:5000/api';
+import { UserList } from './components/UserList';
+import { apiService } from './services/api';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('login');
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isSimulated, setIsSimulated] = useState(false);
 
   // Form states
   const [loginData, setLoginData] = useState({ email: '', password: '' });
@@ -22,26 +23,13 @@ const App: React.FC = () => {
     setApiError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
-      }
-
-      // Success
+      const data = await apiService.login(loginData);
+      setIsSimulated(apiService.isSimulated);
       localStorage.setItem('auth_token', data.token);
       setUser(data.user);
       setCurrentPage('dashboard');
     } catch (err: any) {
-      setApiError(err.message === 'Failed to fetch' 
-        ? 'Cannot connect to backend. Please ensure the Node.js server is running on port 5000.' 
-        : err.message);
+      setApiError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -58,29 +46,16 @@ const App: React.FC = () => {
     setApiError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: regData.username,
-          email: regData.email,
-          password: regData.password
-        }),
+      await apiService.register({
+        username: regData.username,
+        email: regData.email,
+        password: regData.password
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Registration failed');
-      }
-
-      // Success - For ease of use, we auto-login or just send to login page
-      alert("Registration successful! Please login.");
+      setIsSimulated(apiService.isSimulated);
       setCurrentPage('login');
+      alert(apiService.isSimulated ? "Registered in Simulator!" : "Registered on Node Server!");
     } catch (err: any) {
-      setApiError(err.message === 'Failed to fetch' 
-        ? 'Cannot connect to backend. Please ensure the Node.js server is running on port 5000.' 
-        : err.message);
+      setApiError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -97,27 +72,41 @@ const App: React.FC = () => {
             <span className="text-white font-bold">S</span>
           </div>
           <span className="font-bold text-gray-900 tracking-tight">SecureAuth</span>
+          {isSimulated && (
+            <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full uppercase tracking-wider">
+              Simulation Mode
+            </span>
+          )}
         </div>
         <div className="flex items-center space-x-6">
+          <button 
+            onClick={() => setCurrentPage('users')}
+            className={`text-sm font-medium transition-colors ${currentPage === 'users' ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-900'}`}
+          >
+            Users
+          </button>
           <button 
             onClick={() => setCurrentPage('guide')}
             className={`text-sm font-medium transition-colors ${currentPage === 'guide' ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-900'}`}
           >
-            Connection Guide
+            Guide
           </button>
           {user ? (
-            <button 
-              onClick={() => { setUser(null); localStorage.removeItem('auth_token'); setCurrentPage('login'); }}
-              className="text-sm font-medium text-red-500 hover:text-red-600"
-            >
-              Sign Out
-            </button>
+            <div className="flex items-center space-x-4 border-l border-gray-200 pl-4">
+              <span className="text-sm text-gray-600 hidden sm:inline"><b>{user.username}</b></span>
+              <button 
+                onClick={() => { setUser(null); localStorage.removeItem('auth_token'); setCurrentPage('login'); }}
+                className="text-sm font-medium text-red-500 hover:text-red-600"
+              >
+                Sign Out
+              </button>
+            </div>
           ) : (
             <button 
               onClick={() => setCurrentPage('login')}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm"
+              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
             >
-              Get Started
+              Sign In
             </button>
           )}
         </div>
@@ -126,148 +115,71 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 pt-24 px-4">
+    <div className="min-h-screen bg-slate-50 pt-24 pb-20 px-4">
       <Navbar />
 
-      <main className="max-w-md mx-auto">
-        {apiError && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl text-sm animate-in fade-in zoom-in duration-300">
-            <strong>Error:</strong> {apiError}
+      <main className="mx-auto">
+        {currentPage !== 'users' && currentPage !== 'guide' && (
+          <div className="max-w-md mx-auto">
+            {apiError && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl text-sm">
+                <strong>Error:</strong> {apiError}
+              </div>
+            )}
+
+            {currentPage === 'login' && (
+              <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-100 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <h1 className="text-2xl font-bold text-gray-900 mb-2">Login</h1>
+                <p className="text-gray-500 mb-8 text-sm">Welcome back! Sign in to continue.</p>
+                <form onSubmit={handleLogin}>
+                  <Input label="Email Address" type="email" value={loginData.email} onChange={(e) => setLoginData({...loginData, email: e.target.value})} required />
+                  <Input label="Password" type="password" value={loginData.password} onChange={(e) => setLoginData({...loginData, password: e.target.value})} required />
+                  <button type="submit" disabled={isLoading} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 transition-all disabled:opacity-70">
+                    {isLoading ? "Checking..." : "Sign In"}
+                  </button>
+                </form>
+                <p className="mt-6 text-center text-sm text-gray-500">
+                  New here? <button onClick={() => setCurrentPage('register')} className="text-indigo-600 font-semibold hover:underline">Create Account</button>
+                </p>
+              </div>
+            )}
+
+            {currentPage === 'register' && (
+              <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-100 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <h1 className="text-2xl font-bold text-gray-900 mb-2">Register</h1>
+                <p className="text-gray-500 mb-8 text-sm">Create your credentials for the secure database.</p>
+                <form onSubmit={handleRegister}>
+                  <Input label="Username" type="text" value={regData.username} onChange={(e) => setRegData({...regData, username: e.target.value})} required />
+                  <Input label="Email Address" type="email" value={regData.email} onChange={(e) => setRegData({...regData, email: e.target.value})} required />
+                  <Input label="Password" type="password" value={regData.password} onChange={(e) => setRegData({...regData, password: e.target.value})} required />
+                  <Input label="Confirm Password" type="password" value={regData.confirm} onChange={(e) => setRegData({...regData, confirm: e.target.value})} required />
+                  <button type="submit" disabled={isLoading} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 transition-all disabled:opacity-70">
+                    {isLoading ? "Saving..." : "Create Account"}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {currentPage === 'dashboard' && (
+              <div className="bg-white p-12 rounded-3xl shadow-xl border border-gray-100 text-center animate-in zoom-in duration-300">
+                <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900">Success!</h1>
+                <p className="text-gray-500 mt-2">Authenticated as <span className="text-indigo-600 font-bold">{user?.username}</span></p>
+                <button onClick={() => setCurrentPage('users')} className="mt-8 bg-indigo-50 text-indigo-600 px-6 py-2 rounded-xl font-medium hover:bg-indigo-100 transition-colors">
+                  View User Directory
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {currentPage === 'login' && (
-          <div className="bg-white p-8 rounded-2xl shadow-xl shadow-indigo-100/50 border border-gray-100 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome back</h1>
-            <p className="text-gray-500 mb-8 text-sm">Sign in to your account via the Node.js API.</p>
-            
-            <form onSubmit={handleLogin}>
-              <Input 
-                label="Email Address" 
-                type="email" 
-                placeholder="you@example.com"
-                value={loginData.email}
-                onChange={(e) => setLoginData({...loginData, email: e.target.value})}
-                required
-              />
-              <Input 
-                label="Password" 
-                type="password" 
-                placeholder="••••••••"
-                value={loginData.password}
-                onChange={(e) => setLoginData({...loginData, password: e.target.value})}
-                required
-              />
-              <button 
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 transition-all flex items-center justify-center space-x-2 shadow-lg shadow-indigo-200 disabled:opacity-70"
-              >
-                {isLoading ? <span>Connecting...</span> : <span>Sign In</span>}
-              </button>
-            </form>
-            
-            <p className="mt-6 text-center text-sm text-gray-500">
-              Don't have an account?{' '}
-              <button 
-                onClick={() => { setCurrentPage('register'); setApiError(null); }}
-                className="text-indigo-600 font-semibold hover:underline"
-              >
-                Register here
-              </button>
-            </p>
-          </div>
-        )}
-
-        {currentPage === 'register' && (
-          <div className="bg-white p-8 rounded-2xl shadow-xl shadow-indigo-100/50 border border-gray-100 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Create an account</h1>
-            <p className="text-gray-500 mb-8 text-sm">Join the community via our secure backend.</p>
-            
-            <form onSubmit={handleRegister}>
-              <Input 
-                label="Username" 
-                type="text" 
-                placeholder="johndoe"
-                value={regData.username}
-                onChange={(e) => setRegData({...regData, username: e.target.value})}
-                required
-              />
-              <Input 
-                label="Email Address" 
-                type="email" 
-                placeholder="you@example.com"
-                value={regData.email}
-                onChange={(e) => setRegData({...regData, email: e.target.value})}
-                required
-              />
-              <Input 
-                label="Password" 
-                type="password" 
-                placeholder="••••••••"
-                value={regData.password}
-                onChange={(e) => setRegData({...regData, password: e.target.value})}
-                required
-              />
-              <Input 
-                label="Confirm Password" 
-                type="password" 
-                placeholder="••••••••"
-                value={regData.confirm}
-                onChange={(e) => setRegData({...regData, confirm: e.target.value})}
-                required
-              />
-              <button 
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 transition-all flex items-center justify-center space-x-2 shadow-lg shadow-indigo-200 disabled:opacity-70"
-              >
-                {isLoading ? <span>Saving...</span> : <span>Register Now</span>}
-              </button>
-            </form>
-            
-            <p className="mt-6 text-center text-sm text-gray-500">
-              Already have an account?{' '}
-              <button 
-                onClick={() => { setCurrentPage('login'); setApiError(null); }}
-                className="text-indigo-600 font-semibold hover:underline"
-              >
-                Sign In
-              </button>
-            </p>
-          </div>
-        )}
-
-        {currentPage === 'dashboard' && (
-          <div className="bg-white p-12 rounded-3xl shadow-xl border border-gray-100 text-center space-y-6 max-w-lg mx-auto animate-in zoom-in duration-300">
-            <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900">Access Granted!</h1>
-            <p className="text-gray-500">Verified as <span className="font-bold text-indigo-600">{user?.username}</span> via MySQL.</p>
-            <div className="pt-4 flex flex-col space-y-3">
-              <button 
-                onClick={() => setCurrentPage('guide')}
-                className="bg-indigo-50 text-indigo-600 py-3 rounded-xl font-medium hover:bg-indigo-100 transition-colors"
-              >
-                Review Connection Logic
-              </button>
-              <button 
-                onClick={() => { setUser(null); localStorage.removeItem('auth_token'); setCurrentPage('login'); }}
-                className="text-gray-400 text-sm hover:text-gray-600 underline"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        )}
-      </main>
-
-      <div className="mt-12">
+        {currentPage === 'users' && <UserList />}
         {currentPage === 'guide' && <MySQLGuide />}
-      </div>
+      </main>
     </div>
   );
 };

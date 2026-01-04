@@ -8,7 +8,7 @@ require('dotenv').config();
 
 const app = express();
 app.use(express.json());
-app.use(cors()); // Critical for allowing your React frontend to connect
+app.use(cors());
 
 // Database Connection Pool
 const pool = mysql.createPool({
@@ -26,33 +26,19 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_123';
 app.post('/api/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
+    if (!username || !email || !password) return res.status(400).json({ error: "Missing fields" });
 
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: "Please provide all fields" });
-    }
-
-    // Check if user exists
     const [existing] = await pool.execute('SELECT id FROM users WHERE email = ?', [email]);
-    if (existing.length > 0) {
-      return res.status(400).json({ error: "User with this email already exists" });
-    }
+    if (existing.length > 0) return res.status(400).json({ error: "User exists" });
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Save to MySQL
     const [result] = await pool.execute(
       'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
       [username, email, hashedPassword]
     );
-
-    res.status(201).json({ 
-      message: "Registration successful", 
-      userId: result.insertId 
-    });
+    res.status(201).json({ message: "Registered", userId: result.insertId });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error during registration" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -60,36 +46,26 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // Find user
     const [rows] = await pool.execute('SELECT * FROM users WHERE email = ?', [email]);
     const user = rows[0];
-
-    if (!user) {
-      return res.status(401).json({ error: "Invalid email or password" });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: "Invalid credentials" });
     }
+    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ token, user: { id: user.id, username: user.username, email: user.email } });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
-    // Check password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    // Generate JWT
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    res.json({
-      message: "Login successful",
-      token,
-      user: { id: user.id, username: user.username, email: user.email }
-    });
+// --- LIST USERS ROUTE ---
+app.get('/api/users', async (req, res) => {
+  try {
+    const [rows] = await pool.execute('SELECT id, username, email FROM users ORDER BY id DESC');
+    res.json(rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Server error during login" });
+    res.status(500).json({ error: "Could not fetch users" });
   }
 });
 

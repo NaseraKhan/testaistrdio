@@ -1,7 +1,8 @@
 
-export type Page = 'login' | 'register' | 'guide' | 'dashboard';
+export type Page = 'login' | 'register' | 'guide' | 'dashboard' | 'users';
 
 export interface User {
+  id?: number;
   username: string;
   email: string;
 }
